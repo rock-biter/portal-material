@@ -9,6 +9,9 @@ import { Pane } from 'tweakpane'
 
 import portalVertex from './shaders/portal/vertex.glsl'
 import portalFragment from './shaders/portal/fragment.glsl'
+import { lerp } from 'three/src/math/MathUtils.js'
+import createRoundedFlatOval from './utilities'
+import gsap from 'gsap'
 
 const loadingManager = new THREE.LoadingManager()
 const glftLoader = new GLTFLoader(loadingManager)
@@ -23,6 +26,15 @@ const envMap = cubeTextureLoader.load([
 	'/universe/nz.png',
 ])
 
+const envMapCastle = cubeTextureLoader.load([
+	'/castle/px.png',
+	'/castle/nx.png',
+	'/castle/py.png',
+	'/castle/ny.png',
+	'/castle/pz.png',
+	'/castle/nz.png',
+])
+
 let mask
 
 glftLoader.load('/3d-models/magic-mirror.glb', (gltf) => {
@@ -34,13 +46,18 @@ glftLoader.load('/3d-models/magic-mirror.glb', (gltf) => {
 	})
 
 	mask = gltf.scene
-	mask.position.z = -4
-
-	mirrorScene.add(mask)
+	mask.scale.setScalar(0.75)
 })
 
 loadingManager.onLoad = () => {
 	mirrorScene.background = envMap
+
+	scene.add(mirror)
+	mask.position.z = -8
+
+	mirrorScene.add(mask)
+
+	gsap.to(mirror.scale, { x: 1, y: 1, z: 1, duration: 1, ease: 'power4.inOut' })
 }
 
 /**
@@ -80,7 +97,7 @@ const sizes = {
  */
 const fov = 60
 const camera = new THREE.PerspectiveCamera(fov, sizes.width / sizes.height, 0.1)
-camera.position.set(4, 0, 8)
+camera.position.set(0, 0, 10)
 camera.lookAt(new THREE.Vector3(0, 2.5, 0))
 
 /**
@@ -89,7 +106,7 @@ camera.lookAt(new THREE.Vector3(0, 2.5, 0))
 // __helper_axes__
 // const axesHelper = new THREE.AxesHelper(3)
 // scene.add(axesHelper)
-scene.background = new THREE.Color('lightgray')
+// scene.background = new THREE.Color('lightgray')
 /**
  * renderer
  */
@@ -109,21 +126,32 @@ const rt = new THREE.WebGLRenderTarget(resolution.x, resolution.y, {
 
 handleResize()
 
-const mirrorGeom = new THREE.SphereGeometry(2, 128, 64)
-mirrorGeom.scale(1, 1.5, 0.05)
+const mirrorGeom = createRoundedFlatOval(
+	5, // width
+	5, // height
+	2.5, // xRadius
+	0.1, // thickness
+	0.5, // size
+	-1 // offset
+)
+mirrorGeom.scale(1, 1.5, 1)
 mirrorGeom.computeVertexNormals()
 const mirrorMat = new THREE.ShaderMaterial({
 	vertexShader: portalVertex,
 	fragmentShader: portalFragment,
+	// wireframe: true,
 	uniforms: {
 		uScene: new THREE.Uniform(rt.texture),
 		uResolution: new THREE.Uniform(resolution),
+		uEnvMap: new THREE.Uniform(envMapCastle),
+		uTime: new THREE.Uniform(0),
 	},
 	transparent: true,
 })
 const mirror = new THREE.Mesh(mirrorGeom, mirrorMat)
-// mirror.scale.set(1, 1.5, 0.05)
-scene.add(mirror)
+mirror.scale.setScalar(0)
+
+// scene.background = envMapCastle
 
 /**
  * OrbitControls
@@ -140,6 +168,12 @@ const directionalLight = new THREE.DirectionalLight(0xffffff, 4.5)
 directionalLight.position.set(3, 10, 7)
 mirrorScene.add(ambientLight, directionalLight)
 
+const pointer = new THREE.Vector2()
+window.addEventListener('mousemove', (e) => {
+	pointer.x = 2 * (e.clientX / window.innerWidth) - 1
+	pointer.y = -2 * (e.clientY / window.innerHeight) + 1
+})
+
 /**
  * Three js Clock
  */
@@ -154,7 +188,7 @@ function tic() {
 	/**
 	 * tempo trascorso dal frame precedente
 	 */
-	const dt = clock.getDelta()
+	const dt = Math.min(clock.getDelta(), 0.02)
 	time += dt
 	/**
 	 * tempo totale trascorso dall'inizio
@@ -164,10 +198,25 @@ function tic() {
 	// __controls_update__
 	controls.update(dt)
 
+	mirrorMat.uniforms.uTime.value = time
+
 	if (mask) {
-		mask.position.y = Math.sin(time) * 0.2
-		mask.position.x = Math.cos(time) * 0.15
-		mask.rotation.z = Math.cos(time) * 0.05 + Math.sin(time) * 0.05
+		const position = new THREE.Vector3(
+			Math.cos(time) * 0.25 - pointer.x * 1.5,
+			Math.sin(time) * 0.2 - pointer.y * 1,
+			-5 + Math.max(Math.abs(pointer.x), Math.abs(pointer.y)) * 2
+		)
+
+		const rotation = new THREE.Euler(
+			-pointer.y * Math.PI * 0.1,
+			pointer.x * Math.PI * 0.2,
+			Math.cos(time) * 0.05 + Math.sin(time) * 0.05
+		)
+
+		mask.position.lerp(position, dt * 5)
+		mask.rotation.x = lerp(mask.rotation.x, rotation.x, dt * 5)
+		mask.rotation.y = lerp(mask.rotation.y, rotation.y, dt * 5)
+		mask.rotation.z = lerp(mask.rotation.z, rotation.z, dt * 5)
 	}
 
 	renderer.setRenderTarget(rt)
