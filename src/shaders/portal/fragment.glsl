@@ -13,6 +13,7 @@ varying vec3 vPosition;
 void main() {
 
   vec3 normal = normalize(vNormal);
+  // vec3 viewNormal = (viewMatrix * vec4(normal, 0.0)).xyz;
   vec3 light = vec3(0);
   vec3 viewDir = normalize(vPosition - cameraPosition);
   vec3 lightDir = normalize(vec3(1,3,0.5));
@@ -30,7 +31,7 @@ void main() {
   // specular = smoothstep(0.5,1.,specular);
 
   vec2 screenUv = gl_FragCoord.xy / uResolution.xy;
-  vec3 sceneColor = texture(uScene,screenUv).rgb;
+  vec3 sceneColor = texture(uScene,screenUv + normal.xy * 0.05).rgb;
 
   vec3 color = vec3(1.) * light;
   // color += sceneColor * 2.;
